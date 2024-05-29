@@ -1,0 +1,418 @@
+---
+title: "R_Project: Regression - Linear Regression/ KNN/ Decision Tree"
+author: "Celio F"
+date: '2022-06-30'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Data info
+  * Data Name: Data Science and STEM Salaries
+  * Database source: https://www.kaggle.com/datasets/jackogozaly/data-science-and-stem-salaries
+  * Data type: .CSV
+  * Last Update: October, 2021.
+  * Search/ Downloaded Date: 29, June, 2022.
+  * Rows:62643; Columns:29
+  
+# Purpose: 
+   Use the data and the algorithms listed above to predict a base salary for Computer Science based in some variables, as years of experience, years at the company, race, gender and total yearly compensation.
+
+
+#        Linear Regression Algorithm 
+ 
+# Steps to get Data into R and necessary libraries.
+
+  * 1°: step: reading data set.
+  * 2°: libraries necessary for the algorithms.
+
+```{r}
+
+DataSc_Sal <- read.csv("~/Downloads/UTD/MachineLearn/R-Project/Regression/DataScienceSalaries.csv", na.strings = "NA", header = TRUE)
+
+library(readr)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(tidyr)
+library(scales)
+library(viridisLite)
+library(viridis)
+library(ggstatsplot)
+library(caret)
+library(tree)
+library(rpart)
+library(rpart.plot)
+```
+
+# Steps to Data Cleaning
+
+  * 1°: removing unnecessary columns.
+  * 2°: check for NA's, and remove them.
+  * 3°: boxplot to check outliers.
+  * 4°: check min and max values.                   
+  * 5°: set salaries higher than 700.000 to median value.
+  * 6°: set the years of experience equal median value.
+
+ Comments: removing some columns that seems useless for this prediction. 
+   There are 15-level, 19540-gender, 808-tag, 400215-race, and 32272-education that has NA's values.
+   Since the data sill have 21575 rows after removing, still enough data to work with the prediction.
+   Make a base salary graph to look how the data are spread, and have an idea where the concentrated salaries are.
+   Since there are few high salaries and few employees with a large experience, i make them equal median value.
+
+```{r}
+#removing unnecessary columns
+DataSc_Sal$timestamp <- NULL
+DataSc_Sal$otherdetails <- NULL
+DataSc_Sal$cityid <- NULL
+DataSc_Sal$dmaid <- NULL
+DataSc_Sal$rowNumber <- NULL
+
+# checking columns with NA's
+sapply(DataSc_Sal, function(x) sum(is.na(x)==TRUE))
+
+# remove NA's rows 
+DataSc_Sal <- DataSc_Sal %>% drop_na()
+
+# check outliers
+check_outliers <- DataSc_Sal[, c(4, 6, 7, 9, 12, 23)]
+
+# graph to visualize mean
+ggplot(check_outliers, aes(x="", y= basesalary)) + 
+  geom_boxplot(fill='purple', color="black", outlier.size = 0.5) +
+  scale_y_continuous(labels = unit_format(scale = 10e-1, unit = "$")) +
+  geom_jitter(shape="+", color="black", size=0.4, alpha=1.4) + 
+  theme_minimal() + ggtitle("Data Science and STEM Salaries") + ylab("Base Salary")
+
+# check rows with min and max value
+min <- which.min(DataSc_Sal$basesalary)
+print(DataSc_Sal[min,])
+
+max <- which.max(DataSc_Sal$basesalary)
+print(DataSc_Sal[max,])
+
+# set the salaries higer then 700k to median 
+DataSc_Sal$basesalary[DataSc_Sal$basesalary > 700000] <- median(DataSc_Sal$basesalary)
+
+# set years of experience greater then 30 equal median
+DataSc_Sal$yearsofexperience[DataSc_Sal$yearsofexperience > 35] <- median(DataSc_Sal$yearsofexperience)
+```
+
+# Steps to Adjust some columns (data cleaning)
+ 
+ * 1°: making variables as factors.
+
+```{r}
+#making variables as factors
+DataSc_Sal$gender <- factor(DataSc_Sal$gender)
+DataSc_Sal$Race <- factor(DataSc_Sal$Race)
+DataSc_Sal$title <- factor(DataSc_Sal$title)
+DataSc_Sal$localtion <- factor(DataSc_Sal$location)
+DataSc_Sal$tag <- factor(DataSc_Sal$tag)
+DataSc_Sal$Race <- factor(DataSc_Sal$Race)
+```
+
+# Steps to do Data Exploration
+
+  * 1°: some data analysis.
+
+  Checking some values from the data, min, max, mean, median and also checking variables type. 
+
+```{r}
+# some analysis on the data
+head(DataSc_Sal)
+summary(DataSc_Sal)
+str(DataSc_Sal)
+median(DataSc_Sal$basesalary)
+```
+
+# Steps to Data Exploration (graphs)
+
+  * 1°: graph to analyze base salaries and it range.
+  * 2°: graph analyzing base salary with years of experience.
+  * 3°: graph analyzing base salary with race.
+  
+  Analyzing the Raw data Graphs.
+    * 1°: graph is an analyze to check 'base salary' after updates on the raw data.
+    * 2°: graph is an analyze on 'base salary' with the predictor 'years of experience'.
+    * 3°: graph is an analyze on 'base salary' with predictor 'race'. 
+
+```{r}
+ggplot(DataSc_Sal, aes(x= 1:nrow(DataSc_Sal), y= basesalary)) + theme_minimal() +
+  geom_point(aes(color = basesalary)) + scale_color_viridis(option = "D") + 
+  scale_y_continuous(labels = unit_format(scale = 10e-1, unit = "$")) +
+  labs(title = "Data Science and STEM Salaries", x= "Count", y= "Base Salaries")
+
+par(mfrow= c(1, 2))
+ggplot(DataSc_Sal, aes(basesalary, yearsofexperience)) + theme_minimal()  +
+  geom_point(aes(color = yearsofexperience)) + scale_color_viridis(option = "H") +
+  scale_x_continuous(labels = unit_format(scale = 10e-1, unit = "$")) +
+  labs(title = "Salaries by Experience in Years", x= "Base Salaries", y= "Years of Experience")
+
+ggplot(data=DataSc_Sal, aes(x=basesalary, y=Race)) +
+geom_bar(stat="identity", position=position_dodge()) + 
+  scale_x_continuous(labels = unit_format(scale = 10e-1, unit = "$")) +
+  labs(title = "Salaries by Race", x= "Base Salary", y= "Race")
+```
+
+# Steps for Linear Regression Model 
+
+  * 1°: dividing the data into 80% train and 20% test.
+  * 2°: make a linear model with 5 predictors.
+  * 3°: plot and check residuals.
+  * 4°: make predictions about the linear model (2nd step).
+  * 5°: print and check what the algorithm learned.
+  
+# Interpreting Summary: 
+
+ * Residual in this case is not strong symmetrical since it's far away from 0. 
+ * Estimate: expected value is 67080, for example if we consider years of compensation
+would take an average 0.3 years of compensation to a 67080 salary.
+ * Standard Error: we can use the standard to error to calculate the average that coefficient estimates. For example; require 0.0021 years of compensation for a estimate salary 67080
+ * T-value: estimate how far standard deviation is from 0. In this example we are taking in consideration years of compensation, we can say that standard deviation is far of 140 from 0.
+ * P_vale (Pr(>|t|)): note that most the predictors used have a very small p_value close to zero, also the intercept is very small so we can reject the null hypothesis, in conclusion there are good relationship between target base salary and the predictors selected.
+ * Residual Standard Error: it is very hard to interpret as we learned in class.
+ * R-squared: measure how well the model we made will fit on the raw data. The best case is r_square = 1, in this example we have 0.6 that is a good number but not perfect.
+ * F-statistic: indicates is there are relationship between the target and predictors selected. The higher the value is from 1 better relationship we have.This model generates a F-statistic of 3120. So we do have a good relationship between the target and the predictors picked in this example.
+ 
+ 
+
+```{r}
+# divide data into train and test
+set.seed(1234)
+i <- sample(1:nrow(DataSc_Sal), nrow(DataSc_Sal)*0.8, replace=FALSE) 
+train <- DataSc_Sal[i,]
+test <- DataSc_Sal[-i,]
+
+# first model with 5 predictors
+lr_start_time <- Sys.time()
+lm1 <- lm(basesalary~totalyearlycompensation+yearsofexperience+yearsatcompany+gender+Race, data= train)
+lr_end_time <- Sys.time()
+
+summary(lm1)
+
+#plotting the residuals
+par(mfrow=c(2, 2))
+plot(lm1)
+
+#making some prediction on test
+lm1_pred <- predict(lm1, newdata = test)
+lm1_cor <- cor(lm1_pred, test$basesalary)
+lm1_mse <- mean((lm1_pred - test$basesalary)^2)
+
+# printing some linear model results
+print(paste("Linear Regres. - Cor: ", lm1_cor))
+print(paste("Linear Regres. - Mse: ", lm1_mse))
+print(paste("Linear Regres. - Time: ", lr_end_time - lr_start_time ))
+```
+
+
+#             KNN Algorithm 
+
+# Steps for KNN 
+
+  * 1°: convert predictors columns as integer
+  * 2°: make a prediction using KNN regression algorithm
+  * 3°: print results for analysis 
+
+   Comments: Running this first model for KNN, I could assume by analyzing the correlation/ mse between Linear Regression and KNN, I would say that KNN is better by a little improvement with higher correlation and lower mse.
+   But with a few more models and predictions and one more algorithm we'll be able to determined if KNN it's the best model.
+ 
+
+```{r}
+# converting predictors to integer
+train$yearsofexperience <- as.integer(train$yearsofexperience)
+test$yearsofexperience <- as.integer(test$yearsofexperience)
+
+train$yearsatcompany <- as.integer(train$yearsatcompany)
+test$yearsatcompany <- as.integer(test$yearsatcompany)
+
+train$gender <- as.integer(train$gender)
+test$gender <- as.integer(test$gender)
+
+train$Race <- as.integer(train$Race)
+test$Race <- as.integer(test$Race)
+
+# make the prediction
+knn3_start_time <- Sys.time()
+fit <- knnreg(train[, c(4, 6, 7, 12, 23)], train[, 9], k= 3)
+knn3_end_time <- Sys.time()
+predic <- predict(fit, test[, c(4, 6, 7, 12, 23)])
+
+# calculating correlation and mse
+cor_knn <- cor(predic, test$basesalary)
+mse_knn <- mean((predic - test$basesalary)^2)
+
+print(paste("KNN k=3 - Cor: ", cor_knn))
+print(paste("KNN k=3 - Mse: ", mse_knn))
+print(paste("KNN K=3 - Time: ", knn3_end_time - knn3_start_time ))
+```
+
+# Steps to Scale KNN 
+
+  * 1°: set up a train scale
+  * 2°: calculate mean and standard deviation on train data
+  * 3°: apply scale on train and test data
+  * 4°: make the prediction 
+  * 5°: calculate correlation and mse
+  
+  Comments: Scaling the KNN improved the KNN results a little bit more the the previous, but still not a considerable improvement so let's try check KNN with different values for K. 
+  
+  
+```{r}
+# scaling train data
+train_scale <- train[, c(4, 6, 7, 12, 23)]
+
+# calculate mean and standard deviation
+means <- sapply(train_scale, mean)
+stdvs <- sapply(train_scale, sd)
+
+# apply the scale on train and test data
+train_scale <- scale(train_scale, center= means, scale= stdvs)
+test_scale <- scale(test[, c(4, 6, 7, 12, 23)], center= means, scale= stdvs)
+
+# make prediction on the train scaled
+knns_start_time <- Sys.time()
+fit <- knnreg(train_scale, train$basesalary, k= 3)
+knns_end_time <- Sys.time()
+predic <- predict(fit, test_scale)
+
+# calculate correlation and mse
+cor_knn2 <- cor(predic, test$basesalary)
+mse_knn2 <- mean((predic - test$basesalary)^2)
+
+print(paste("KNN Scaled k=3 - Cor: ", cor_knn2))
+print(paste("KNN Scaled k=3 - Mse: ", mse_knn2))
+print(paste("KNN Scaled     - Time: ", knns_end_time - knns_start_time ))
+```
+
+# Steps to Find the best K 
+
+  * 1°: make loop to check different values for K.
+  * 2°: graph the arrays of cor_k and mse_k.
+  * 3°: find out the min and max K correlation and Mse.
+
+```{r}
+# setting the variables and index
+cor_k <- rep(0, 20)
+mse_k <- rep(0, 20)
+i <- 1
+
+# looping through the data
+for (k in seq(1, 50, 2)) {
+  # predicting with different values for k on each loop
+  fit_k <- knnreg(train[, c(4, 6, 7, 12, 23)], train[, 9], k= k)
+  pred_k <- predict(fit_k, test[, c(4, 6, 7, 12, 23)])
+  
+  # store the result for correlation and mean on array
+  cor_k[i] <- cor(pred_k, test$basesalary)
+  mse_k[i] <- mean((pred_k - test$basesalary)^2)
+  
+  # print each result
+  print(paste("K= ", k, "Correlation: ", cor_k[i], " Mse: ", mse_k[i]))
+  i <- i+1
+}
+
+# graphing mse and cor
+plot(1:25, cor_k, lwd= 1.7, col= 'orange')
+par(new=TRUE)
+plot(1:25, mse_k, lwd= 1.7, col= 'purple', labels= FALSE, ylab="")
+
+# find the min and max k cor/ mse
+paste("Max K cor: ", which.max(cor_k))
+paste("Min K mse: ", which.min(mse_k))
+```
+
+# Steps to check K= 15
+  
+  * 1°: lets compare K= 15
+
+   Comments: Setting k= 15 we get the best result between Logistic Regression and KNN previous implemented but still not relevant result.
+  
+```{r}
+# make new prediction with k= 15
+knn15_start_time <- Sys.time()
+fit <- knnreg(train[, c(4, 6, 7, 12, 23)], train[, 9], k= 15)
+knn15_end_time <- Sys.time()
+predic <- predict(fit, test[, c(4, 6, 7, 12, 23)])
+
+# calculating correlation and mse
+cor_knn15 <- cor(predic, test$basesalary)
+mse_knn15 <- mean((predic - test$basesalary)^2)
+
+print(paste("KNN k=15 - Cor: ", cor_knn15))
+print(paste("KNN k=15 - Mse: ", mse_knn15))
+print(paste("KNN k=15 - Time: ", knn15_end_time - knn15_start_time ))
+```
+
+#             Decision Tree Algorithm
+
+# Steps to do Decision Tree 
+
+  * 1°: make a prediction using 5 predictors
+  * 2°: plot the prediction to analyze the graph
+  * 3°: make a prediction and calculate correlation and mse
+
+  Comments: The graph of Decision Tree defined that the 'total years of compensation' is the best predictor for the target used, also defined that the best fit for the model is 'total years of compensation' less than 154500 for that reason it doesn't displayed the other predictors used.  
+
+```{r}
+# making the prediction with the target and predictors
+dt_start_time <- Sys.time()
+tre <- tree(basesalary ~ totalyearlycompensation + yearsofexperience + yearsatcompany + gender + Race, data= train)
+dt_end_time <- Sys.time()
+summary(tre)
+
+# plotting the prediction
+plot(tre)
+text(tre, cex= 0.5, pretty= 0)
+
+# make prediction and find correlation and mse
+tre_pred <- predict(tre, newdata =test)
+tre_cor <- cor(tre_pred, test$basesalary)
+tre_mse <- sqrt(mean((tre_pred - test$basesalary)^2))
+
+print(paste("Dec. Tree - Cor: ", tre_cor))
+print(paste("Dec. Tree - Mse: ", tre_mse))
+print(paste("Dec. Tree - Time: ", dt_end_time - dt_start_time ))
+```
+
+
+# Final conclusion and analyse. 
+#   -Linear Regression:
+        * "Cor:  0.83327667069042"
+        * "Mse:  933010585.366937"
+        * "Logistic Regres. - Time:  0.0227301120758057"
+      
+#   -KNN for K=3
+        * "KNN k=3 - Cor:  0.871631266124787"
+        * "KNN k=3 - Mse:  736143643.179047"
+        * "KNN K=3 - Time:  0.00343608856201172"
+      
+#   -Scaled KNN for K=3
+        * "KNN Scaled k=3 - Cor:  0.873669774246138"
+        * "KNN Scaled k=3 - Mse:  706303591.809512"
+        * "KNN Scaled     - Time:  0.00418591499328613"
+       
+#   -KNN for K=15
+        * "KNN k=15 - Cor:  0.898421197472725"
+        * "KNN k=15 - Mse:  574757885.638329"
+        * "KNN k=15 - Time:  0.00408005714416504"
+      
+#   -Decision Tree
+        * "Dec. Tree - Cor:  0.8838284855868"
+        * "Dec. Tree - Mse:  25512.356873744"
+        * "Dec. Tree - Time:  0.0441329479217529"
+        
+    
+  Since the best algorithm should give the higher correlation and lower mse it seems that KNN for K=15 and Decision Tree are the best they vary between one having the higher correlation and the other the lower mse, even though the difference of the correlation being 0.01. Also I set a times on each model to check if time could be something to take into a count, but also run time does not seems to be a good parameter.
+  In conclusion, since neither of the technologies implemented had a significant difference in (correlation, mse, or time) we can conclude that all are the same for the prediction made in this example.
+
+
+
+
+
+
+
+
+
+

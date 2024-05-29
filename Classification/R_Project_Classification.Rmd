@@ -1,0 +1,288 @@
+---
+title: 'R_Project: Classification - Logistic Regression/ KNN/ Decision Tree'
+author: "Celio F kelly"
+date: '2022-06-30'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+# Data info
+  * Data Name: Airline Passenger Satisfaction.
+  * Database source: https://www.kaggle.com/datasets/teejmahal20/airline-passenger-satisfaction
+  * Data type: .CSV
+  * Last Update: 2 years ago.
+  * Search/ Downloaded Date: 29, June, 2022.
+  * Rows:103910; Columns:25
+  
+# Purpose: 
+   Use the data and the algorithms listed above to predict passenger satisfaction based in some variables, as age, class, flight distance, food and drink, and check-in service.
+
+
+#        Logistic Regression Algorithm 
+ 
+# Steps to get Data into R and necessary libraries.
+
+```{r}
+library(readr)
+library(tidyverse)
+library(caret)
+library(ggplot2)
+library(gridExtra)
+library(viridis)
+library(viridisLite)
+library(class)
+library(e1071)
+library(caTools)
+library(tree)
+
+ps <- read.csv("~/Downloads/UTD/MachineLearn/R-Project/Classification/Airline_Passenger_Satisfaction.csv")
+```
+
+# Steps to Data Cleaning
+
+  * 1°: removing unnecessary columns.
+  * 2°: check for NA's and remove them.
+  * 3°: converting necessary columns as factor.
+  * 4°: boxplot to analyze the data.
+  * 5°: check total of passenger satisfied or neutral/ dissatisfied.                   
+
+  Comments: there are two columns that is useless for this prediction. 
+  Luckily there is only one column that contains NA's values, 'Arrival Delay in Minutes' there are 310 NA's.
+  After removing those rows with NA's values still left over 103599 rows that is good enough for this project, so we do not need to do any adjustment on the data to fill up NA's values.
+  Make a graph to analyze how the data are spread, and have an idea what is the passenger satisfaction rate comparing with the predictor 'Age'.
+  We generate two graphs to compare 'satisfied' and 'neutral or dissatisfied', as the graphs shows the mean for 'neutral or dissatisfied' is about 38 years old, and there are way more passenger dissatisfied also did not show any outlier.
+  On the other hand we see 'satisfied' passenger mean that is about 43 years old, there are less client and a few outliers.
+
+```{r}
+# remove unnecessary columns
+ps$X <- NULL
+ps$id <- NULL
+
+# checking columns with NA's
+sapply(ps, function(x) sum(is.na(x)==TRUE))
+
+# remove NA's rows 
+ps <- ps %>% drop_na()
+
+# converting columns to factor
+ps$satisfaction <- factor(ps$satisfaction)
+ps$Class <- factor(ps$Class)
+
+
+# boxplot
+qplot(data= ps, x=satisfaction, y=Age, fill=satisfaction, geom='boxplot') +
+  geom_boxplot(color="black", outlier.size = 0.5) +
+  geom_jitter(shape="+", color='#9d0bf7', size=0.4, alpha=1.4) +
+  labs(title = "Passanger Satisfaction vs Age", xlab= "Satisfaction", ylab= "Age")
+```
+
+# Steps to do Data Exploration
+
+  * 1°: some data analysis.
+
+  Checking some values from the data using str function to see, min, max, mean, median and also checking variables type. 
+  The last line shows the total of 'satisfied' and 'neutral or dissatisfied' that's confirme what we saw about in the graph.
+
+```{r}
+head(ps)
+summary(ps)
+str(ps)
+table(ps$satisfaction)
+median(ps$Age)
+mean(ps$Age)
+```
+
+# Steps to Data Exploration (graphs)
+
+  * 1°: graph to satisfied and check-in service.
+  * 2°: graph analyzing satisfied with class
+  
+```{r}
+ggplot(ps, aes(y = Checkin.service)) +
+  geom_bar(aes(fill = satisfaction), position = position_stack(reverse = FALSE)) +
+  theme(legend.position = "bottom") +
+  labs(title = "Passengers Satisfaction with Check-in Services", x= "", y= "Check-in Service")
+
+
+```
+  
+
+# Steps for Linear Regression Model 
+
+  * 1°: dividing the data into 80% train and 20% test.
+  * 2°: make a logistic regression model with 3 predictors.
+  * 3°: calculate the probability, prediction and accuracy
+  
+  Comments: As we can see out of 4 predictors used in this model, only 2 are significantly associated with the target.
+  The coefficient estimated Age has b= 0.0123, which is positive. Meaning that an increase in the age is associated with the probability of the passenger to be satisfied. In the other hand for Class Eco Plus the b= -1.85, meaning a decrease in the probability of the passenger to be satisfied.
+ 
+  The accuracy value is 0.24 not the best result since the good accuracy is equal to 1. At this point I will not assume best or worse algorithm since I will run two more to compare.
+  
+```{r}
+# divide data into train and test
+set.seed(1234)
+i <- sample(1:nrow(ps), nrow(ps)*0.8, replace=FALSE) 
+train <- ps[i,]
+test <- ps[-i,]
+
+# make the model 
+lr_start_time <- Sys.time()
+lm1 <- glm(satisfaction ~ Age + Class + Flight.Distance + Food.and.drink + Checkin.service, data= train, family= "binomial")
+lr_end_time <- Sys.time()
+summary(lm1)$coef
+
+# calculate probability, prediction and accuracy
+probs <- lm1 %>% predict(test, type="response")
+pred <- ifelse(probs > 0.5,"neutral or dissatisfied", "satisfied")
+acc <- mean(pred == test$satisfaction)
+
+#printing result and time 
+print(paste("Logistic Regres. - Accuracy: ", acc))
+print(paste("Logistic Regres. - Time: ", lr_end_time - lr_start_time ))
+
+# confuse matrix for logistic regression
+table(pred, test$satisfaction)
+```
+  
+
+#             KNN Algorithm 
+
+# Steps for KNN 
+
+  * 1°: divide the data into train and test for KNN classification
+  * 2°: convert predictors columns on train and test to numeric
+  * 3°: setting scales for train and test
+  * 4°: make KNN prediction using k with (3, 15, 26, 34)
+  * 5°: print results and confuse matrix
+
+  Comments: Using different values for K we can see that the accuracy have the same value. Also we have a improvement comparing to the previous algorithm but the final analyses and comparison will be posted at the end after the last technology.
+
+```{r}
+# divide the data into train and test
+set.seed(1298)
+spt <- sample.split(ps, SplitRatio= 0.7)
+ps_train <- subset(ps, spt== "TRUE")
+ps_test <- subset(ps, spt== "FALSE")
+
+# convert columns to numeric necessary for KNN classification
+ps_train$Age <- as.numeric(ps_train$Age)
+ps_train$Class <- as.numeric(ps_train$Class)
+ps_train$Checkin.service <- as.numeric(ps_train$Checkin.service)
+
+ps_test$Age <- as.numeric(ps_test$Age)
+ps_test$Class <- as.numeric(ps_test$Class)
+ps_test$Food.and.drink <- as.numeric(ps_test$Food.and.drink)
+ps_test$Flight.Distance <- as.numeric(ps_test$Flight.Distance)
+ps_test$Checkin.service <- as.numeric(ps_test$Checkin.service)
+str(ps_train)
+# setting the scales 
+ps_trainSale <- scale(ps_train[,c(3, 5, 6, 11, 18)])
+ps_testScale <- scale(ps_test[,c(3, 5, 6, 11, 18)])
+
+# make the knn model for k= 3
+knn_start_time <- Sys.time()
+kn3_pred <- knn(train= ps_trainSale, test= ps_testScale, cl= ps_train$satisfaction, k= 3)
+knn_end_time <- Sys.time()
+sp3_error <- mean(kn3_pred != ps_test$satisfaction)
+
+# checking accuracy for k=15
+kn15_pred <- knn(train= ps_trainSale, test= ps_testScale, cl= ps_train$satisfaction, k= 15)
+sp15_error <- mean(kn15_pred != ps_test$satisfaction)
+
+# checking accuracy for k= 26
+kn26_pred <- knn(train= ps_trainSale, test= ps_testScale, cl= ps_train$satisfaction, k= 26)
+sp26_error <- mean(kn26_pred != ps_test$satisfaction)
+
+# checking accuracy for k= 34
+kn34_pred <- knn(train= ps_trainSale, test= ps_testScale, cl= ps_train$satisfaction, k= 34)
+sp34_error <- mean(kn34_pred != ps_test$satisfaction)
+
+print(paste("KNN k= 3 - Accuracy =", 1 - sp3_error))
+print(paste("KNN k= 13 - Accuracy =", 1 - sp15_error))
+print(paste("KNN k= 23 - Accuracy =", 1 - sp26_error))
+print(paste("KNN k= 32 - Accuracy =", 1 - sp34_error))
+
+print(paste("KNN avg - Time: ", knn_end_time - knn_start_time ))
+
+# confuse matrix for knn
+table(ps_test$satisfaction, kn3_pred)
+
+```
+
+
+#             Decision Tree Algorithm
+
+# Steps to do Decision Tree 
+
+  * 1°: make a decision tree model using 5 predictors
+  * 2°: plot the DT with all predictors based on the target
+  * 3°: make a prediction and calculate accuracy
+  * 4°: printing the result and confusing matrix
+
+  Comments: The graph of Decision Tree defined that the 'Class' is the best predictor for the target used and Classes (Eco, Eco Plus ) have higher probability of satisfied clients, following the tree path, we can see that 'satisfied' and 'neutral or unsatisfied' clients are shown on the tree with each respective probability on top.
+
+```{r}
+# making the prediction with the target and predictors
+dt_start_time <- Sys.time()
+tre <- tree(satisfaction ~ Age + Flight.Distance + Food.and.drink + Class + Checkin.service, data= train)
+dt_end_time <- Sys.time()
+summary(tre)
+
+# plotting the prediction
+plot(tre)
+text(tre, cex= 0.5, pretty= 0)
+
+# make prediction and find accuracy
+tre_pred <- predict(tre, newdata =test, type = "class")
+tre_acc <- mean(tre_pred == test$satisfaction)
+
+print(paste("Dec. Tree - Accuracy: ", tre_acc))
+print(paste("Dec. Tree - Time: ", dt_end_time - dt_start_time ))
+
+# confuse matrix for decision tree
+table(tre_pred, test$satisfaction)
+```
+
+
+# Final conclusion and analyse. 
+
+#   -Linear Regression:
+       * "Logistic Regres. - Accuracy:  0.225241312741313"
+       * "Logistic Regres. - Time:  0.267198085784912"
+      
+#   -KNN for K=3
+       * "KNN k= 3 - Accuracy = 0.75203780646389"
+       * "KNN avg - Time:  8.6551718711853"
+      
+#   -Scaled KNN for K=13
+       * "KNN k= 13 - Accuracy = 0.786799454470487"
+       * "KNN avg - Time:  8.6551718711853"
+       
+#   -KNN for K=23
+        * "KNN k= 23 - Accuracy = 0.788321862412382"
+        * "KNN avg - Time:  8.6551718711853"
+       
+#    -KNN for K=32
+       * "KNN k= 32 - Accuracy = 0.789431951536681"
+       * "KNN avg - Time:  8.6551718711853"
+      
+#   -Decision Tree
+       * "Dec. Tree - Accuracy:  0.787065637065637"
+       * "Dec. Tree - Time:  0.242020130157471"
+
+  Since the best classification algorithm should give an accuracy value equal 1, analyzing the result in this project, we can conclude that the best algorithm in this case taking in consideration result closer to 1 would be KNN where k= 32. Besides Logistic Regression that had the worst accuracy result, KNN and Decision Tree had almost the same results, the large difference that we can take into a count is time, KNN took 8.4 seconds more then Decision Tree. 
+  So in conclusion, to decide which technology performed better in this specific case will I would say Decision Tree because it has the lower run time.
+
+
+
+
+
+
+
+
+
+
+
+
+
